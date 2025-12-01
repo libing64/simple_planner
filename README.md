@@ -34,6 +34,16 @@
 python demo.py
 ```
 
+## 手动控制
+
+手动控制Agent推动T型块:
+```bash
+python manual_control.py
+```
+- 使用方向键 (↑ ↓ ← →) 控制Agent移动
+- 按 `R` 重置环境
+- 按 `Q` 退出
+
 ## 实现细节
 
 - **环境**: 

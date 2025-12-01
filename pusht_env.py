@@ -196,16 +196,36 @@ class PushTEnv(gym.Env):
             
         self.screen.fill((255, 255, 255))
         
-        # Draw Goal (Ghost T)
-        # Manually draw goal T at goal_pos/goal_angle
-        # ... (simplified: just a circle for goal pos)
-        pygame.draw.circle(self.screen, (200, 255, 200), (int(self.goal_pos[0]), int(self.goal_pos[1])), 10)
+        # Draw Goal (Green T-block)
+        self._draw_block(self.goal_pos, self.goal_angle, (100, 255, 100))
         
         # Draw Physics
         self.space.debug_draw(self.draw_options)
         
         pygame.display.flip()
         self.clock.tick(self.metadata["render_fps"])
+
+    def _draw_block(self, pos, angle, color):
+        # Define vertices relative to center (matches definitions in reset)
+        # H-bar: [-40, -40] to [40, -20]
+        h_verts = [(-40, -40), (40, -40), (40, -20), (-40, -20)]
+        # V-bar: [-10, -20] to [10, 40]
+        v_verts = [(-10, -20), (10, -20), (10, 40), (-10, 40)]
+        
+        # Transform and draw
+        for verts in [h_verts, v_verts]:
+            transformed_verts = []
+            for x, y in verts:
+                # Rotate (standard 2D rotation matrix)
+                rx = x * np.cos(angle) - y * np.sin(angle)
+                ry = x * np.sin(angle) + y * np.cos(angle)
+                # Translate
+                tx = rx + pos[0]
+                ty = ry + pos[1]
+                transformed_verts.append((tx, ty))
+            
+            pygame.draw.polygon(self.screen, color, transformed_verts)
+
 
     def close(self):
         if self.screen is not None:
