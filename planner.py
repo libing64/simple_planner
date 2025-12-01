@@ -4,67 +4,98 @@ class SimplePlanner:
     def __init__(self, goal_pos, goal_angle=0):
         self.goal_pos = goal_pos
         self.goal_angle = goal_angle
-        self.state = "APPROACH" # APPROACH, PUSH, BACKOFF
-        self.approach_offset = 120 # Distance behind block to line up
-        self.push_threshold = 100 # How close to goal before backing off (if needed)
+        # Parameters
+        self.approach_dist = 60    # Distance to stage behind block
+        self.push_speed = 150       # Max speed for pushing
+        self.approach_speed = 150   # Max speed for approaching
+        self.k_rot = 20.0           # Gain for angular correction (lateral offset)
+        self.block_radius = 60      # Approximate radius for avoidance
+        self.tolerance_dist = 20    # Distance tolerance to switch modes
         
     def get_action(self, obs):
         agent_pos = obs['agent_pos']
         block_pos = obs['block_pos']
         block_angle = obs['block_angle'][0]
         
-        # Vector from block to goal
+        # 1. Goal Vector and Angle Error
         to_goal = self.goal_pos - block_pos
         dist_to_goal = np.linalg.norm(to_goal)
         
         if dist_to_goal < 10:
-            return np.array([0, 0]) # Close enough
+            return np.array([0, 0])
             
         dir_to_goal = to_goal / (dist_to_goal + 1e-6)
         
-        # Target position for agent to start pushing (behind the block)
-        push_start_pos = block_pos - dir_to_goal * self.approach_offset
+        # Calculate angle difference (shortest path)
+        angle_diff = (block_angle - self.goal_angle + np.pi) % (2 * np.pi) - np.pi
         
-        # Vector from agent to push start
-        to_start = push_start_pos - agent_pos
-        dist_to_start = np.linalg.norm(to_start)
-        
-        # Vector from agent to block
-        to_block = block_pos - agent_pos
-        dist_to_block = np.linalg.norm(to_block)
-        
-        # Simple State Machine
-        
-        # 1. If we are far from the pushing line/position, go there first
-        # We want to be behind the block.
-        # Check if we are "in front" of the block relative to goal?
-        # Dot product: (agent - block) . dir_to_goal > 0 means we are in front.
-        
-        is_in_front = np.dot(agent_pos - block_pos, dir_to_goal) > -20
-        
-        Kp = 5.0 # Proportional gain
-        
-        if is_in_front or dist_to_start > 20:
-            # Navigate to push_start_pos
-            # Simple P-controller
-            
-            # Avoid hitting the block if we are on the wrong side?
-            # If we are in front, we should go around.
-            # Very simple avoidance: go perpendicular first?
-            # For this simple planner, let's just go to start pos. 
-            # If we plow through the block, physics might be messy but it might eventually work.
-            # To be slightly smarter: if blocked, move sideways.
-            
-            target_vel = to_start * Kp
+        # Adaptive parameters based on distance to goal
+        if dist_to_goal < 100:
+            # Close to goal: precise maneuvering
+            effective_k_rot = self.k_rot # High gain for angle
+            effective_push_speed = self.push_speed * 0.5 # Slow down
+            effective_approach_dist = self.approach_dist
         else:
-            # We are behind and close to start pos. Push!
-            # Target is the goal (or through the block)
-            target_vel = dir_to_goal * 100 # Max speed push
+            # Far from goal: rough transport
+            effective_k_rot = 5.0 # Low gain to prevent spinning
+            effective_push_speed = self.push_speed
+            effective_approach_dist = self.approach_dist
+        
+        # 2. Determine Target Push Position (behind the block)
+        right_vec = np.array([dir_to_goal[1], -dir_to_goal[0]]) # (dy, -dx)
+        lateral_offset_mag = np.clip(effective_k_rot * angle_diff, -40, 40)
+        lateral_offset = -right_vec * lateral_offset_mag
+        
+        # Target position behind block
+        target_push_pos = block_pos - dir_to_goal * effective_approach_dist + lateral_offset
+        
+        # 3. Navigation / Pathfinding
+        # Check if we can go straight to target_push_pos
+        to_target = target_push_pos - agent_pos
+        dist_to_target = np.linalg.norm(to_target)
+        
+        # Avoidance logic
+        # "In front" check:
+        dist_along_axis = np.dot(agent_pos - block_pos, dir_to_goal)
+        
+        target_vel = np.array([0.0, 0.0])
+        
+        if dist_along_axis > -20:
+            # We are in front or inside. Need to go around.
+            # Side waypoints: block_pos +/- right_vec * (radius + margin)
+            wp_right = block_pos + right_vec * (self.block_radius + 20)
+            wp_left = block_pos - right_vec * (self.block_radius + 20)
             
-        # Clip velocity
+            dist_right = np.linalg.norm(wp_right - agent_pos)
+            dist_left = np.linalg.norm(wp_left - agent_pos)
+            
+            if dist_right < dist_left:
+                target_wp = wp_right
+            else:
+                target_wp = wp_left
+                
+            # Move to waypoint
+            to_wp = target_wp - agent_pos
+            if np.linalg.norm(to_wp) > 10:
+                target_vel = to_wp / (np.linalg.norm(to_wp) + 1e-6) * self.approach_speed
+            else:
+                # Close to waypoint, now head to target_push_pos
+                target_vel = (target_push_pos - agent_pos)
+        else:
+            # We are behind.
+            # If we are far from target_push_pos, go there.
+            if dist_to_target > self.tolerance_dist:
+                target_vel = to_target * 5.0 # P-gain for positioning
+            else:
+                # We are in position. PUSH!
+                push_drive = dir_to_goal * effective_push_speed
+                correction_drive = to_target * 5.0
+                
+                target_vel = push_drive + correction_drive
+                
+        # Clip max speed
         speed = np.linalg.norm(target_vel)
-        if speed > 100:
-            target_vel = target_vel / speed * 100
+        if speed > self.approach_speed:
+            target_vel = target_vel / speed * self.approach_speed
             
         return target_vel
-

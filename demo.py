@@ -15,10 +15,11 @@ def main():
     # Initialize planner
     # Goal is fixed in env for now: (300, 300)
     goal_pos = env.goal_pos
-    planner = SimplePlanner(goal_pos=goal_pos)
+    goal_angle = env.goal_angle
+    planner = SimplePlanner(goal_pos=goal_pos, goal_angle=goal_angle)
     
     print("Starting simulation...")
-    print(f"Goal Position: {goal_pos}")
+    print(f"Goal Position: {goal_pos}, Goal Angle: {goal_angle:.2f}")
     
     done = False
     truncated = False
