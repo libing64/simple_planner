@@ -49,6 +49,10 @@ class PushTEnv(gym.Env):
         self.space = pymunk.Space()
         self.space.damping = self.damping
 
+        # Create pivot joint for friction (top-down friction)
+        # Connects body to static body (world) to simulate sliding friction
+        # We'll add this after creating the block body
+
         # Create walls
         walls = [
             pymunk.Segment(self.space.static_body, (0, 0), (self.width, 0), 1),
@@ -108,6 +112,20 @@ class PushTEnv(gym.Env):
         v_bar.color = (100, 100, 255, 255)
         
         self.space.add(self.block_body, h_bar, v_bar)
+
+        # Add friction pivot to block
+        # PivotJoint between block_body and static_body at the block's position
+        # Max force/bias limits the rotation and movement, simulating friction
+        pivot = pymunk.PivotJoint(self.space.static_body, self.block_body, (0, 0), (0, 0))
+        pivot.max_bias = 0.0 # No position correction
+        pivot.max_force = 1000.0 # Emulate linear friction
+        self.space.add(pivot)
+        
+        # Add rotary friction (gear joint with ratio 1)
+        gear = pymunk.GearJoint(self.space.static_body, self.block_body, 0.0, 1.0)
+        gear.max_bias = 0.0
+        gear.max_force = 5000.0 # Emulate rotational friction
+        self.space.add(gear)
         
         # Initial position for block
         self.block_body.position = (self.width / 2, self.height / 2)
