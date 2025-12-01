@@ -118,13 +118,13 @@ class PushTEnv(gym.Env):
         # Max force/bias limits the rotation and movement, simulating friction
         pivot = pymunk.PivotJoint(self.space.static_body, self.block_body, (0, 0), (0, 0))
         pivot.max_bias = 0.0 # No position correction
-        pivot.max_force = 1000.0 # Emulate linear friction
+        pivot.max_force = 500.0 # Emulate linear friction
         self.space.add(pivot)
         
         # Add rotary friction (gear joint with ratio 1)
         gear = pymunk.GearJoint(self.space.static_body, self.block_body, 0.0, 1.0)
         gear.max_bias = 0.0
-        gear.max_force = 5000.0 # Emulate rotational friction
+        gear.max_force = 500.0 # Emulate rotational friction
         self.space.add(gear)
         
         # Initial position for block
